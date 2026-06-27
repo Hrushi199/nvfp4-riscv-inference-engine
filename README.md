@@ -120,98 +120,95 @@ See [docs/custom_isa_reference.md](docs/custom_isa_reference.md) for full encodi
 ### SoC Block Diagram
 
 ```mermaid
-block-beta
-    columns 3
-    
-    block:TOP["cv32e40p_nvfp4_top"]:3
-        columns 3
+graph TD
+    subgraph TOP["<b>cv32e40p_nvfp4_top</b>"]
+        direction LR
         
-        block:CPU["cv32e40p_core (RISC-V RV32IMC)"]:1
-            columns 1
-            IF["IF Stage\n(Fetch + Prefetch)"]
-            ID["ID Stage\n(Modified Decoder\n7 Custom Instructions)"]
-            EX["EX Stage\n(ALU + MUL + APU Dispatch)"]
-            LSU["Load/Store Unit\n(OBI Bus Interface)"]
-            RF["Register File\n(32 × 32-bit, FF-based)"]
+        subgraph CPU["<b>cv32e40p_core</b><br/>RISC-V RV32IMC"]
+            IF[IF Stage] --> ID[ID Stage<br/><i>Modified Decoder</i>]
+            ID --> EX[EX Stage<br/>ALU + MUL]
+            EX --> LSU[Load/Store Unit]
+            RF[Register File<br/>32x32-bit FF]
         end
 
-        space
-
-        block:ACCEL["nvfp4_apu_adapter"]:1
-            columns 1
-            MUX["Opcode Router\n(funct3-based dispatch)"]
+        subgraph ADAPTER["<b>nvfp4_apu_adapter</b>"]
+            ROUTER{Opcode Router<br/>funct3 dispatch}
             
-            block:NVFP4["NVFP4 Accelerator"]:1
-                columns 1
-                DEC["nvfp4_decoder"]
-                DOT["nvfp4_dot_product_16\n(16 parallel channels)"]
-                SCL["nvfp4_scale_multiply\n(Block-wise FP32 scaling)"]
+            subgraph NVFP4["NVFP4 Accelerator"]
+                N1[nvfp4_decoder] --> N2[nvfp4_dot_product_16<br/><i>16 parallel channels</i>]
+                N2 --> N3[nvfp4_scale_multiply<br/><i>Block-wise FP32 scaling</i>]
             end
             
-            block:BF16["BF16 MAC Unit"]:1
-                columns 1
-                BF["bf16_mac_unit\n(4 BF16 pairs → FP32)"]
+            subgraph BF16["BF16 MAC Unit"]
+                B1[bf16_mac_unit<br/><i>4 BF16 pairs to FP32</i>]
             end
+            
+            ROUTER -->|"NVFP4 ops<br/>funct3: 000-011"| N1
+            ROUTER -->|"BF16 ops<br/>funct3: 100-110"| B1
         end
+
+        EX <-->|"<b>APU Interface</b><br/>req / gnt / operands / result"| ROUTER
     end
 
-    EX -- "APU Interface\n(req/gnt/rvalid)" --> MUX
+    IMEM[(Instruction<br/>Memory)] <--> IF
+    DMEM[(Data<br/>Memory)] <--> LSU
+
+    style TOP fill:#f8f9fa,stroke:#343a40,stroke-width:3px
+    style CPU fill:#dbeafe,stroke:#2563eb,stroke-width:2px
+    style ADAPTER fill:#d1fae5,stroke:#059669,stroke-width:2px
+    style NVFP4 fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    style BF16 fill:#ede9fe,stroke:#7c3aed,stroke-width:2px
 ```
 
 ### Project Pipeline
 
 ```mermaid
-flowchart LR
-    subgraph SW["Software Analysis"]
-        A["NVFP4 Arithmetic\n(Phase 4.2)"] --> B["Layer Sensitivity\n(Phase 4.3)"]
-        B --> C["Mixed-Precision\nScheduler\n(Phase 4.4)"]
-    end
-    
-    subgraph HW["Hardware Design"]
-        D["NVFP4 RTL\nAccelerator"] --> F["RISC-V SoC\nIntegration"]
-        E["BF16 MAC\nUnit"] --> F
-        F --> G["ISA Extension\n(7 Custom Instrs)"]
-    end
-    
-    subgraph VER["Verification & Synthesis"]
-        H["Vivado Sim\n14/14 Tests ✓"] --> I["Cadence Genus\n45nm Synthesis"]
-    end
-    
-    C -.->|"Precision\nAssignment"| D
-    C -.->|"Precision\nAssignment"| E
-    G --> H
+graph LR
+    A[NVFP4 Arithmetic<br/><b>Phase 4.2</b>] --> B[Layer Sensitivity<br/><b>Phase 4.3</b>]
+    B --> C[Mixed-Precision<br/>Scheduler<br/><b>Phase 4.4</b>]
+    C -.->|Precision<br/>Assignment| D[NVFP4 Accelerator<br/><b>RTL Design</b>]
+    C -.->|Precision<br/>Assignment| E[BF16 MAC Unit<br/><b>RTL Design</b>]
+    D --> F[RISC-V SoC<br/>Integration]
+    E --> F
+    F --> G[Custom ISA<br/><b>7 Instructions</b>]
+    G --> H[Vivado Simulation<br/><b>14/14 PASS</b>]
+    H --> I[Genus Synthesis<br/><b>45nm GPDK045</b>]
 
-    style SW fill:#1a1a2e,stroke:#e94560,color:#fff
-    style HW fill:#1a1a2e,stroke:#0f3460,color:#fff
-    style VER fill:#1a1a2e,stroke:#16c79a,color:#fff
+    style A fill:#fde8ec,stroke:#e94560,stroke-width:2px
+    style B fill:#fde8ec,stroke:#e94560,stroke-width:2px
+    style C fill:#fde8ec,stroke:#e94560,stroke-width:2px
+    style D fill:#e0e8f0,stroke:#0f3460,stroke-width:2px
+    style E fill:#e0e8f0,stroke:#0f3460,stroke-width:2px
+    style F fill:#e0e8f0,stroke:#0f3460,stroke-width:2px
+    style G fill:#e0e8f0,stroke:#0f3460,stroke-width:2px
+    style H fill:#d6f5ec,stroke:#16c79a,stroke-width:2px
+    style I fill:#d6f5ec,stroke:#16c79a,stroke-width:2px
 ```
 
-### Data Flow (Instruction Execution)
+### Instruction Execution Flow
 
 ```mermaid
 sequenceDiagram
-    participant CPU as CV32E40P Core
+    participant CPU as CPU Core
     participant DEC as Decoder
     participant APU as APU Dispatch
-    participant ADAPT as APU Adapter
-    participant NVFP4 as NVFP4 Accel
-    participant BF16 as BF16 MAC
+    participant ADAPT as Adapter
+    participant ACC as NVFP4 / BF16
 
     CPU->>DEC: Fetch Custom-0 instruction
-    DEC->>DEC: Decode funct3 field
-    DEC->>APU: Set apu_en, apu_op
-    APU->>ADAPT: apu_req + operands + op
+    DEC->>DEC: Decode funct3
+    DEC->>APU: apu_en + apu_op
+    APU->>ADAPT: apu_req + operands
     
-    alt funct3 = 000..011 (NVFP4)
-        ADAPT->>NVFP4: Route to NVFP4 unit
-        NVFP4-->>ADAPT: FP32 result (multi-cycle)
-    else funct3 = 100..110 (BF16)
-        ADAPT->>BF16: Route to BF16 unit
-        BF16-->>ADAPT: FP32 result (multi-cycle)
+    alt NVFP4 (funct3 = 000..011)
+        ADAPT->>ACC: Route to NVFP4
+    else BF16 (funct3 = 100..110)
+        ADAPT->>ACC: Route to BF16
     end
     
-    ADAPT-->>APU: apu_rvalid + result
-    APU-->>CPU: Write result to rd
+    ACC-->>ADAPT: FP32 result
+    ADAPT-->>APU: apu_rvalid
+    APU-->>CPU: Write to rd
 ```
 
 ---
