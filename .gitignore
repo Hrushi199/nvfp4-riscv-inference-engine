@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Vivado
+*.jou
+*.log
+*.str
+*.xpr
+*.wdb
+*.pb
+*.prj
+.Xil/
+*.sim/
+*.runs/
+*.cache/
+*.hw/
+*.ip_user_files/
+
+# Cadence Genus
+genus.cmd*
+genus.log*
+genus.invs_setup_file
+fv/
+*.db
+OUTPUT/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data files 
+*.zip
+*.tar.gz
+data/
